@@ -1,0 +1,42 @@
+name: daily-update-prices
+
+on:
+  schedule:
+    - cron: "50 6 * * 1-5"   # Mon-Fri 14:50 Taiwan time
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install packages
+        run: pip install -r requirements.txt
+      - name: Fetch latest prices
+        run: python scripts/update_data.py --auto
+      - name: Recompute backtest
+        run: python scripts/run_backtest.py
+      - name: Commit new data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/processed outputs/cache
+          if git diff --cached --quiet; then
+            echo "no new data"
+          else
+            git commit -m "daily price update $(date -u +%F)"
+            git pull --rebase --autostash
+            git push
+          fi
