@@ -1,0 +1,42 @@
+name: 每日更新股價
+
+on:
+  schedule:
+    - cron: "50 6 * * 1-5"   # 週一到週五 台灣時間 14:50
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: 安裝套件
+        run: pip install -r requirements.txt
+      - name: 抓最新股價
+        run: python scripts/update_data.py --auto
+      - name: 重算回測
+        run: python scripts/run_backtest.py
+      - name: 存回 repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/processed outputs/cache
+          if git diff --cached --quiet; then
+            echo "沒有新資料"
+          else
+            git commit -m "每日更新股價 $(date -u +%F)"
+            git pull --rebase --autostash
+            git push
+          fi
